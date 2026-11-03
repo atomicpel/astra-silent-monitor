@@ -1,37 +1,31 @@
 #!/usr/bin/env bash
 # Сборка офлайн-комплекта внутри контейнера Astra Linux 1.8 (GitHub Actions).
-# Переменные: ASTRA_VERSION (например 1.8.5; пусто = последняя),
+# Переменные: ASTRA_VERSION (например 1.8.5; пусто = версия образа),
 #             AGENT_VERSION (пусто = как версия Zabbix в репозитории Astra)
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 
-BASE=https://dl.astralinux.ru/astra/frozen/1.8_x86-64
 echo "== Образ: $(cat /etc/astra_version 2>/dev/null || echo '?')"
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update || true
-apt-get install -y curl ca-certificates || true
-command -v curl >/dev/null || { echo "Нет curl в образе"; exit 1; }
-
-if [[ -z ${ASTRA_VERSION:-} ]]; then
-  ASTRA_VERSION=$(curl -fsSL "$BASE/" | grep -oE '1\.8\.[0-9]+(\.[0-9]+)?/' | tr -d / | sort -uV | tail -1)
-fi
+IMG_VER=$(cat /etc/astra_version 2>/dev/null || true)
+ASTRA_VERSION=${ASTRA_VERSION:-$IMG_VER}
 [[ -n $ASTRA_VERSION ]] || { echo "Не удалось определить версию Astra"; exit 1; }
 echo "== Версия репозиториев Astra: $ASTRA_VERSION"
 
-: > /etc/apt/sources.list
+# Источники образа уже указывают на frozen-репозитории его версии.
+# Если нужна другая версия — подменяем номер версии в адресах.
+grep -rhE '^deb ' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null > /tmp/src || true
+if [[ ! -s /tmp/src ]]; then
+  for sub in main-repository extended-repository; do
+    echo "deb https://download.astralinux.ru/astra/frozen/1.8_x86-64/${ASTRA_VERSION}/${sub}/ 1.8_x86-64 main contrib non-free"
+  done > /tmp/src
+fi
+if [[ -n $IMG_VER && $ASTRA_VERSION != "$IMG_VER" ]]; then
+  sed -i "s#/${IMG_VER}/#/${ASTRA_VERSION}/#g" /tmp/src
+fi
 rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources
-found=0
-for sub in repository-main main-repository repository-base base-repository \
-           repository-extended extended-repository; do
-  for rel in InRelease Release; do
-    if curl -fsSI "$BASE/$ASTRA_VERSION/$sub/dists/1.8_x86-64/$rel" >/dev/null; then
-      echo "deb $BASE/$ASTRA_VERSION/$sub/ 1.8_x86-64 main contrib non-free" >> /etc/apt/sources.list
-      echo "   + $sub"; found=1; break
-    fi
-  done
-done
-(( found )) || { echo "Репозитории $ASTRA_VERSION не найдены"; exit 1; }
+cp /tmp/src /etc/apt/sources.list
 cat /etc/apt/sources.list
 apt-get update
 
