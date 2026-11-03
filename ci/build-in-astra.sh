@@ -33,7 +33,16 @@ ZBX=$(apt-cache policy zabbix-server-pgsql | awk '/Candidate|Кандидат/{p
 echo "== Zabbix в репозитории: ${ZBX:-НЕТ}"
 [[ -n $ZBX && $ZBX != "(none)" ]] || { echo "zabbix-server-pgsql не найден в репозиториях $ASTRA_VERSION"; exit 1; }
 if [[ -z ${AGENT_VERSION:-} ]]; then
-  AGENT_VERSION=$(sed -E 's/^[0-9]+://; s/[+~-].*//' <<<"$ZBX")
+  # Берём самый свежий агент той же основной версии (в нём все исправления
+  # безопасности; агенты 7.0.x совместимы с сервером 7.0.x)
+  MAJ=$(sed -E 's/^[0-9]+://; s/^([0-9]+\.[0-9]+).*/\1/' <<<"$ZBX")
+  for n in $(seq 60 -1 0); do
+    v="$MAJ.$n"
+    if curl -fsI "https://cdn.zabbix.com/zabbix/binaries/stable/$MAJ/$v/zabbix_agent2-$v-windows-amd64-openssl.msi" >/dev/null; then
+      AGENT_VERSION=$v; break
+    fi
+  done
+  [[ -n ${AGENT_VERSION:-} ]] || { echo "Не найден агент $MAJ.x на cdn.zabbix.com"; exit 1; }
 fi
 export AGENT_VERSION
 echo "== Агент Windows: $AGENT_VERSION"
@@ -46,6 +55,7 @@ rm -f config.env hosts.txt
   echo "Репозитории:"; sed 's/^/  /' /etc/apt/sources.list
   echo "Zabbix server: $ZBX"
   echo "Агент Windows: $AGENT_VERSION"
+  echo "SHA256 агента: $(sha256sum bundle/astra-silent-monitor/windows/*.msi 2>/dev/null | cut -d" " -f1)"
   echo "Собрано: $(date -u '+%F %T UTC')"
   echo "SHA256 архива: $(cut -d' ' -f1 bundle/astra-silent-monitor-bundle.tar.gz.sha256)"
 } | tee bundle/BUILD-INFO.txt
