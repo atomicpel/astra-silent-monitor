@@ -1,0 +1,48 @@
+name: Сборка офлайн-комплекта
+
+on:
+  workflow_dispatch:
+    inputs:
+      astra_version:
+        description: "Версия Astra SE как на вашем ISO, например 1.8.5 (пусто = последняя)"
+        required: false
+        default: ""
+      agent_version:
+        description: "Версия агента Zabbix для Windows (пусто = как Zabbix в репозитории Astra)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сборка в контейнере Astra Linux 1.8
+        env:
+          ASTRA_VERSION: ${{ inputs.astra_version }}
+          AGENT_VERSION: ${{ inputs.agent_version }}
+        run: |
+          docker pull registry.astralinux.ru/library/astra/ubi18:latest
+          docker run --rm -v "$PWD":/work -w /work \
+            -e ASTRA_VERSION -e AGENT_VERSION \
+            registry.astralinux.ru/library/astra/ubi18:latest \
+            bash ci/build-in-astra.sh
+          sudo chown -R "$(id -u):$(id -g)" bundle
+
+      - name: Публикация в Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source bundle/build.env
+          TAG="bundle-${ASTRA_VERSION}-$(date -u +%Y%m%d-%H%M)"
+          gh release create "$TAG" \
+            --title "Офлайн-комплект для Astra SE ${ASTRA_VERSION}" \
+            --notes-file bundle/BUILD-INFO.txt \
+            bundle/astra-silent-monitor-bundle.tar.gz \
+            bundle/astra-silent-monitor-bundle.tar.gz.sha256 \
+            bundle/BUILD-INFO.txt

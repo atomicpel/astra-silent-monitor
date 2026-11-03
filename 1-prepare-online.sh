@@ -14,9 +14,12 @@ set -Eeuo pipefail
 source "$(dirname "$0")/lib/common.sh"
 need_root
 
+# Версия агента: переменная окружения > config.env > по умолчанию
+ENV_AGENT_VERSION="${AGENT_VERSION:-}"
 AGENT_VERSION="7.0.10"
 # shellcheck disable=SC1091
 [[ -f ${ROOT_DIR}/config.env ]] && source "${ROOT_DIR}/config.env"
+[[ -n $ENV_AGENT_VERSION ]] && AGENT_VERSION=$ENV_AGENT_VERSION
 
 OUT="${ROOT_DIR}/bundle"
 STAGE="${OUT}/astra-silent-monitor"
