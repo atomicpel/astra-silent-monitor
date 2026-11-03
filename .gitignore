@@ -1,0 +1,8 @@
+# Реальные адреса, ключи и пакеты в репозиторий не попадают
+config.env
+hosts.txt
+psk/
+bundle/
+*.tar.gz
+*.msi
+secrets/
